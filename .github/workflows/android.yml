@@ -11,6 +11,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Cần quyền ghi để tạo Release
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -41,3 +44,11 @@ jobs:
           name: weather-assistant-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Phát hành APK thành Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: APK build ${{ github.run_number }}
+          make_latest: true
+          files: android/app/build/outputs/apk/debug/app-debug.apk
