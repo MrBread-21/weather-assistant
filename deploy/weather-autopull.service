@@ -1,0 +1,9 @@
+[Unit]
+Description=Auto-pull weather-assistant from GitHub, restart app if changed
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Chạy script nằm trong repo (được quản lý bởi git)
+ExecStart=/bin/bash /var/www/projects/weather-assistant/deploy/autopull.sh

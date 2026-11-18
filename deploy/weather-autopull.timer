@@ -1,0 +1,9 @@
+[Unit]
+Description=Run weather-assistant auto-pull every minute
+
+[Timer]
+OnCalendar=minutely
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,10 @@
+# Trạng thái lúc chạy (vị trí người dùng, trạng thái cảnh báo) — không commit
+state/
+
+# File secret (API key, ntfy topic) — KHÔNG BAO GIỜ commit
+weather-assistant.env
+.env
+
+# Python
+__pycache__/
+*.pyc

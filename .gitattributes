@@ -1,0 +1,4 @@
+# Script shell + systemd units luôn dùng LF (chạy trên Linux server)
+*.sh      text eol=lf
+*.service text eol=lf
+*.timer   text eol=lf

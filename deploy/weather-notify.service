@@ -1,0 +1,13 @@
+[Unit]
+Description=Weather assistant rain-alert check (mrbread)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/projects/weather-assistant
+Environment=STATE_DIR=/var/lib/weather-assistant
+EnvironmentFile=-/etc/weather-assistant.env
+ExecStart=/usr/bin/python3 /var/www/projects/weather-assistant/notify.py
+StateDirectory=weather-assistant

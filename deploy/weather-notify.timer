@@ -1,0 +1,10 @@
+[Unit]
+Description=Run weather rain-alert check every 15 minutes
+
+[Timer]
+# Phút 0,15,30,45 mỗi giờ
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

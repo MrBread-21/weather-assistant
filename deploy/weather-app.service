@@ -1,0 +1,23 @@
+[Unit]
+Description=Weather assistant web app (mrbread)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/projects/weather-assistant
+Environment=HOST=127.0.0.1
+Environment=PORT=8100
+Environment=STATE_DIR=/var/lib/weather-assistant
+# File chứa secret (ANTHROPIC_API_KEY, NTFY_TOPIC...) — KHÔNG nằm trong repo.
+# Dấu '-' nghĩa là thiếu file cũng không sao (app vẫn chạy, tắt phần AI).
+EnvironmentFile=-/etc/weather-assistant.env
+ExecStart=/usr/bin/python3 /var/www/projects/weather-assistant/app.py
+# Tạo sẵn /var/lib/weather-assistant cho user www-data ghi state
+StateDirectory=weather-assistant
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <title>Trợ lý thời tiết</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>Trợ lý thời tiết</h1>
+      <p class="sub" id="place">Đang xác định vị trí…</p>
+    </header>
+
+    <section class="card" id="nowCard" hidden>
+      <div class="now">
+        <div class="temp"><span id="temp">–</span><span class="deg">°C</span></div>
+        <div class="now-meta">
+          <div class="desc" id="desc">–</div>
+          <div class="muted" id="feels">–</div>
+        </div>
+      </div>
+      <div class="facts">
+        <span>Độ ẩm <b id="humidity">–</b></span>
+        <span>Gió <b id="wind">–</b></span>
+      </div>
+      <p class="summary" id="summary"></p>
+    </section>
+
+    <section class="card alert" id="alertCard" hidden>
+      <span class="alert-tag">Chú ý</span>
+      <span id="alertText"></span>
+    </section>
+
+    <section class="card" id="windowsCard" hidden>
+      <h2>Khung giờ có thể mưa</h2>
+      <ul id="windows"></ul>
+    </section>
+
+    <section class="card suggest" id="suggestCard" hidden>
+      <h2>Gợi ý cho hôm nay</h2>
+      <p id="suggestText">Đang nghĩ…</p>
+    </section>
+
+    <section class="actions">
+      <button id="enableBtn" class="btn" hidden>Bật nhắc nhở về điện thoại</button>
+      <p class="hint" id="status"></p>
+      <button id="retryBtn" class="btn ghost" hidden>Thử lại định vị</button>
+    </section>
+
+    <footer class="muted small">
+      Dữ liệu: Open-Meteo, gợi ý bởi Claude, chạy trên server mrbread
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

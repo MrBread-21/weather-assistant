@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Web server cho app "Nhắc nhở thời tiết" (mrbread).
+
+Phục vụ:
+  GET  /                      : trang web (điện thoại mở, tự lấy GPS)
+  GET  /api/weather?lat&lon   : thời tiết cùng phân tích (nhanh)
+  GET  /api/suggest?lat&lon   : gợi ý "nên đi đâu, làm gì" từ Claude (chậm hơn)
+  POST /api/location          : nhận {"lat":.., "lon":..}, lưu vị trí để job nền dùng
+  các path tĩnh khác (app.js, style.css) lấy trong static/.
+
+Chỉ dùng thư viện chuẩn, kèm 'anthropic' tuỳ chọn qua weatherlib.
+Biến môi trường: HOST (127.0.0.1), PORT (8100), STATE_DIR (./state).
+Khi deploy, Nginx phục vụ và chuyển tiếp sang cổng này.
+"""
+from __future__ import annotations
+
+import json
+import os
+from http import HTTPStatus
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlsplit, parse_qs
+
+import weatherlib
+
+ROOT = Path(__file__).resolve().parent
+STATIC = ROOT / "static"
+HOST = os.environ.get("HOST", "127.0.0.1")
+PORT = int(os.environ.get("PORT", "8100"))
+STATE_DIR = Path(os.environ.get("STATE_DIR", ROOT / "state"))
+LOCATION_FILE = STATE_DIR / "location.json"
+MAX_BODY = 64 * 1024
+
+
+def save_location(lat: float, lon: float) -> None:
+    """Ghi vị trí mới nhất (job nền notify.py sẽ đọc để kiểm tra mưa)."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = LOCATION_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({
+        "lat": lat, "lon": lon,
+        "updated": weatherlib.datetime.now().isoformat(timespec="seconds"),
+    }), encoding="utf-8")
+    os.replace(tmp, LOCATION_FILE)
+
+
+def _valid_coord(lat, lon) -> bool:
+    try:
+        return -90 <= float(lat) <= 90 and -180 <= float(lon) <= 180
+    except (TypeError, ValueError):
+        return False
+
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(STATIC), **kwargs)
+
+    def log_message(self, *args):  # bớt ồn log
+        pass
+
+    def _path(self) -> str:
+        return urlsplit(self.path).path
+
+    def _query(self) -> dict:
+        return parse_qs(urlsplit(self.path).query)
+
+    def _send_json(self, status: int, payload: dict) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ----- lấy lat/lon từ query, trả (lat, lon) hoặc None nếu sai -----
+    def _coords(self):
+        q = self._query()
+        lat, lon = (q.get("lat", [None])[0], q.get("lon", [None])[0])
+        if not _valid_coord(lat, lon):
+            self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Thiếu/sai lat,lon"})
+            return None
+        return float(lat), float(lon)
+
+    def do_GET(self):
+        path = self._path()
+
+        if path == "/api/weather":
+            coords = self._coords()
+            if not coords:
+                return
+            try:
+                weather = weatherlib.fetch_weather(*coords)
+                analysis = weatherlib.analyze(weather)
+            except Exception as e:
+                return self._send_json(HTTPStatus.BAD_GATEWAY,
+                                       {"error": f"Không lấy được thời tiết: {e}"})
+            return self._send_json(HTTPStatus.OK, {
+                "now": analysis["now"],
+                "rain_soon": analysis["rain_soon"],
+                "soon_text": analysis["soon_text"],
+                "windows": analysis["windows"],
+                "summary": weatherlib.summary_text(analysis),
+            })
+
+        if path == "/api/suggest":
+            coords = self._coords()
+            if not coords:
+                return
+            try:
+                weather = weatherlib.fetch_weather(*coords)
+                analysis = weatherlib.analyze(weather)
+            except Exception as e:
+                return self._send_json(HTTPStatus.BAD_GATEWAY,
+                                       {"error": f"Không lấy được thời tiết: {e}"})
+            tip = weatherlib.ai_suggest(analysis, mode="full")
+            return self._send_json(HTTPStatus.OK, {
+                "suggestion": tip,
+                "ai_on": tip is not None,
+            })
+
+        if path in ("/", "/index.html"):
+            self.path = "/index.html"
+        elif path.startswith("/api/"):
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        return super().do_GET()
+
+    def do_POST(self):
+        if self._path() != "/api/location":
+            return self.send_error(HTTPStatus.NOT_FOUND)
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if not (0 < length <= MAX_BODY):
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Thiếu dữ liệu"})
+        try:
+            payload = json.loads(self.rfile.read(length))
+            lat, lon = payload["lat"], payload["lon"]
+            if not _valid_coord(lat, lon):
+                raise ValueError
+        except (ValueError, KeyError, TypeError):
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Toạ độ không hợp lệ"})
+        save_location(float(lat), float(lon))
+        return self._send_json(HTTPStatus.OK, {"ok": True})
+
+
+def main() -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    print(f"Weather app: http://{HOST}:{PORT}  (state: {STATE_DIR})", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()
