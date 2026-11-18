@@ -19,9 +19,14 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 echo "==> 1/4 Cài gói anthropic (cho phần gợi ý AI)"
-pip3 install -q anthropic \
-    || pip3 install -q --break-system-packages anthropic \
-    || echo "    (không cài được anthropic — app vẫn chạy phần thời tiết, cài sau cũng được)"
+if python3 -c "import anthropic" 2>/dev/null; then
+    echo "    Đã có sẵn anthropic."
+elif pip3 install -q --break-system-packages anthropic 2>/dev/null \
+     || pip3 install -q anthropic 2>/dev/null; then
+    echo "    Cài anthropic xong."
+else
+    echo "    (không cài được anthropic — app vẫn chạy phần thời tiết, cài sau cũng được)"
+fi
 
 echo "==> 2/4 Tạo file secret nếu chưa có"
 if [ -f "$ENVFILE" ]; then
