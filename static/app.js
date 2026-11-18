@@ -12,6 +12,20 @@ const setStatus = (t) => $("status").textContent = t || "";
 
 function fmtTemp(v) { return v == null ? "–" : Math.round(v); }
 
+// Biểu tượng thời tiết (SVG nét, theo mã WMO) — không dùng emoji
+function iconFor(code) {
+  code = Number(code);
+  const a = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+  const sun = `<svg viewBox="0 0 24 24" ${a}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>`;
+  const cloud = `<svg viewBox="0 0 24 24" ${a}><path d="M7 18a4 4 0 0 1 .7-7.95 5.5 5.5 0 0 1 10.6 1.45A3.5 3.5 0 0 1 17.5 18H7z"/></svg>`;
+  const rain = `<svg viewBox="0 0 24 24" ${a}><path d="M7 15a4 4 0 0 1 .7-7.95 5.5 5.5 0 0 1 10.6 1.45A3.5 3.5 0 0 1 17.5 15H7z"/><path d="M8 18l-1 2.5M12 18l-1 2.5M16 18l-1 2.5"/></svg>`;
+  const storm = `<svg viewBox="0 0 24 24" ${a}><path d="M7 15a4 4 0 0 1 .7-7.95 5.5 5.5 0 0 1 10.6 1.45A3.5 3.5 0 0 1 17.5 15H7z"/><path d="M12 15l-2.2 4H13l-2.2 4"/></svg>`;
+  if (code >= 95) return storm;
+  if ((code >= 51 && code <= 67) || (code >= 71 && code <= 86)) return rain;
+  if (code === 0 || code === 1) return sun;
+  return cloud;
+}
+
 async function getJSON(url, opts) {
   const r = await fetch(url, opts);
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
@@ -26,6 +40,7 @@ function renderWeather(w) {
   $("humidity").textContent = n.humidity != null ? `${n.humidity}%` : "–";
   $("wind").textContent = n.wind != null ? `${n.wind} km/h` : "–";
   $("summary").textContent = w.summary || "";
+  $("wxIcon").innerHTML = iconFor(n.code);
   show("nowCard");
 
   if (w.rain_soon && w.soon_text) {

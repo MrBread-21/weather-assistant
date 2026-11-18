@@ -57,7 +57,7 @@ def main() -> None:
     day_events = [{
         "when_text": e["when_text"], "summary": e["summary"],
         "location": e.get("location", ""),
-        "wx": "" if e["all_day"] else weatherlib.event_wx_note(weather, e["start"]),
+        "wx": weatherlib.wx_note_text(weatherlib.event_weather(e, weather)),
     } for e in raw_events]
 
     now = analysis["now"]
@@ -98,13 +98,13 @@ def main() -> None:
         hours = (e["start"] - now_utc).total_seconds() / 3600
         if not (0 <= hours <= 12):          # chỉ nhắc sự kiện trong 12h tới
             continue
-        wx = weatherlib.weather_at(weather, e["start"])
-        if not wx or ((wx["prob"] or 0) < 50 and (wx["precip"] or 0) < 0.3):
+        wx = weatherlib.event_weather(e, weather)   # thời tiết tại đúng nơi sự kiện
+        if not wx or ((wx.get("prob") or 0) < 50 and (wx.get("precip") or 0) < 0.3):
             continue                        # thời tiết lúc đó không đáng lo
         sig = e["start_iso"] + "|" + e["summary"]
         if sig in notified:
             continue                        # đã nhắc sự kiện này rồi
-        wx_note = f"{wx['desc']}, khả năng mưa ~{wx['prob'] or 0}%"
+        wx_note = weatherlib.wx_note_text(wx)
         ev = [{"when_text": e["when_text"], "summary": e["summary"],
                "location": e.get("location", ""), "wx": wx_note}]
         tip = weatherlib.ai_suggest(analysis, mode="brief", habits=habits, events=ev)

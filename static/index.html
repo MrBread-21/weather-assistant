@@ -3,28 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b1220">
+  <meta name="theme-color" content="#0a0f1e">
   <title>Trợ lý thời tiết</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="wrap">
-    <header>
-      <h1>Trợ lý thời tiết</h1>
-      <p class="sub" id="place">Đang xác định vị trí…</p>
-    </header>
-
-    <section class="card" id="nowCard" hidden>
-      <div class="now">
-        <div class="temp"><span id="temp">–</span><span class="deg">°C</span></div>
-        <div class="now-meta">
-          <div class="desc" id="desc">–</div>
-          <div class="muted" id="feels">–</div>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <h1>Trợ lý thời tiết</h1>
+          <p class="place" id="place">Đang xác định vị trí…</p>
         </div>
       </div>
-      <div class="facts">
-        <span>Độ ẩm <b id="humidity">–</b></span>
-        <span>Gió <b id="wind">–</b></span>
+    </header>
+
+    <section class="hero" id="nowCard" hidden>
+      <div class="hero-row">
+        <div class="wx-icon" id="wxIcon"></div>
+        <div class="hero-temp">
+          <div class="temp"><span id="temp">–</span><span class="deg">°C</span></div>
+          <div class="desc" id="desc">–</div>
+          <div class="feels" id="feels">–</div>
+        </div>
+      </div>
+      <div class="chips">
+        <div class="chip"><span class="chip-k">Độ ẩm</span><b id="humidity">–</b></div>
+        <div class="chip"><span class="chip-k">Gió</span><b id="wind">–</b></div>
       </div>
       <p class="summary" id="summary"></p>
     </section>
@@ -35,46 +44,47 @@
     </section>
 
     <section class="card" id="windowsCard" hidden>
-      <h2>Khung giờ có thể mưa</h2>
-      <ul id="windows"></ul>
+      <h2 class="card-title">Khung giờ có thể mưa</h2>
+      <ul id="windows" class="list"></ul>
     </section>
 
     <section class="card suggest" id="suggestCard" hidden>
-      <h2>Gợi ý cho hôm nay</h2>
+      <div class="card-head">
+        <h2 class="card-title">Gợi ý cho hôm nay</h2>
+        <span class="ai-badge">AI</span>
+      </div>
       <p id="suggestText">Đang nghĩ…</p>
     </section>
 
-    <section class="card habits" id="habitsCard" hidden>
-      <h2>Thói quen sinh hoạt</h2>
-      <p class="muted small">Cho app biết lịch quen của bạn để gợi ý và nhắc mưa sát hơn. Ví dụ: đi làm 7h sáng, về 18h, hay chạy bộ 17h, cuối tuần đi cà phê.</p>
-      <textarea id="habitsText" rows="3" placeholder="Ví dụ: đi làm 7h, về 18h, chạy bộ 17h chiều, cuối tuần hay ra ngoài"></textarea>
-      <button id="saveHabitsBtn" class="btn ghost">Lưu thói quen</button>
-      <p class="hint" id="habitsStatus"></p>
-    </section>
-
-    <section class="card calendar" id="calCard" hidden>
-      <h2>Lịch Google Calendar</h2>
+    <section class="card" id="calCard" hidden>
+      <h2 class="card-title">Lịch Google Calendar</h2>
       <p class="hint" id="calStatus"></p>
       <div id="calDisconnected" hidden>
         <p class="muted small">Nối lịch để AI nhắc khi sự kiện của bạn trùng lúc trời mưa.</p>
         <a class="btn" id="calConnectBtn" href="/api/gcal/login">Đăng nhập Google</a>
       </div>
       <div id="calConnected" hidden>
-        <ul id="calEvents"></ul>
+        <ul id="calEvents" class="list"></ul>
         <p class="muted small" id="calEmpty" hidden>Không có sự kiện nào trong 36 giờ tới.</p>
         <button class="btn ghost" id="calDisconnectBtn">Ngắt kết nối lịch</button>
       </div>
     </section>
 
+    <section class="card" id="habitsCard" hidden>
+      <h2 class="card-title">Thói quen sinh hoạt</h2>
+      <p class="muted small">Cho app biết lịch quen của bạn để gợi ý và nhắc mưa sát hơn. Ví dụ: đi làm 7h sáng, về 18h, hay chạy bộ 17h.</p>
+      <textarea id="habitsText" rows="3" placeholder="Ví dụ: đi làm 7h, về 18h, chạy bộ 17h chiều, cuối tuần hay ra ngoài"></textarea>
+      <button id="saveHabitsBtn" class="btn ghost">Lưu thói quen</button>
+      <p class="hint" id="habitsStatus"></p>
+    </section>
+
     <section class="actions">
-      <button id="enableBtn" class="btn" hidden>Bật nhắc nhở về điện thoại</button>
+      <button id="enableBtn" class="btn primary" hidden>Bật nhắc nhở về điện thoại</button>
       <p class="hint" id="status"></p>
       <button id="retryBtn" class="btn ghost" hidden>Thử lại định vị</button>
     </section>
 
-    <footer class="muted small">
-      Dữ liệu: Open-Meteo, gợi ý bởi Claude, chạy trên server mrbread
-    </footer>
+    <footer class="foot">Dữ liệu Open-Meteo · Gợi ý bởi Claude · Chạy trên mrbread</footer>
   </main>
   <script src="app.js"></script>
 </body>

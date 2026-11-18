@@ -25,6 +25,7 @@ import time
 import urllib.parse
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 # ------------------------------------------------------------------ cấu hình
 OPEN_METEO = "https://api.open-meteo.com/v1/forecast"
@@ -225,6 +226,99 @@ def event_wx_note(weather: dict, dt) -> str:
     return f"{w['desc']}"
 
 
+# ---------------------------------- geocode địa điểm sự kiện (Nominatim, miễn phí)
+_GEO_CACHE_FILE = Path(os.environ.get(
+    "STATE_DIR", Path(__file__).resolve().parent / "state")) / "geocache.json"
+_geo_mem: dict | None = None
+
+
+def _geo_load() -> dict:
+    global _geo_mem
+    if _geo_mem is None:
+        try:
+            _geo_mem = json.loads(_GEO_CACHE_FILE.read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            _geo_mem = {}
+    return _geo_mem
+
+
+def _geo_save(cache: dict) -> None:
+    try:
+        _GEO_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _GEO_CACHE_FILE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def geocode(place: str):
+    """Đổi địa chỉ/tên nơi thành (lat, lon, tên_ngắn). None nếu không tìm ra.
+
+    Dùng Nominatim của OpenStreetMap (miễn phí). Có nhớ tạm ra file để đỡ gọi lại.
+    """
+    place = (place or "").strip()
+    if not place:
+        return None
+    cache = _geo_load()
+    if place in cache:
+        c = cache[place]
+        return tuple(c) if c else None
+
+    url = "https://nominatim.openstreetmap.org/search?" + urllib.parse.urlencode(
+        {"q": place, "format": "json", "limit": 1, "accept-language": "vi"})
+    req = urllib.request.Request(url, headers={"User-Agent": "mrbread-weather/1.0"})
+    result = None
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        if data:
+            it = data[0]
+            short = (it.get("display_name", "").split(",")[0] or place).strip()
+            result = (float(it["lat"]), float(it["lon"]), short)
+    except Exception as e:
+        print(f"[geocode] lỗi tra '{place}': {e}", flush=True)
+
+    cache[place] = list(result) if result else None
+    _geo_save(cache)
+    return result
+
+
+def event_weather(event: dict, fallback_weather: dict):
+    """Thời tiết tại ĐÚNG địa điểm + giờ của sự kiện.
+
+    Nếu sự kiện có địa điểm và geocode được thì lấy thời tiết tại nơi đó;
+    nếu không thì dùng fallback_weather (vị trí đã lưu của người dùng).
+    Trả dict {prob, precip, desc, place} hoặc None (sự kiện cả ngày / ngoài tầm).
+    """
+    if event.get("all_day"):
+        return None
+    dt = event["start"]
+    loc = (event.get("location") or "").strip()
+    if loc:
+        geo = geocode(loc)
+        if geo:
+            try:
+                w = fetch_weather(geo[0], geo[1])
+                wx = weather_at(w, dt)
+                if wx:
+                    return {**wx, "place": geo[2]}
+            except Exception as e:
+                print(f"[event_weather] lỗi lấy thời tiết nơi sự kiện: {e}", flush=True)
+    wx = weather_at(fallback_weather, dt)
+    return {**wx, "place": "vị trí của bạn"} if wx else None
+
+
+def wx_note_text(wx: dict | None) -> str:
+    """Định dạng thông tin thời tiết sự kiện thành câu ngắn kèm tên nơi."""
+    if not wx:
+        return ""
+    prob = wx.get("prob") or 0
+    base = wx["desc"]
+    if prob >= 50 or (wx.get("precip") or 0) >= 0.3:
+        base += f", khả năng mưa ~{prob}%"
+    place = wx.get("place")
+    return base + (f" ({place})" if place else "")
+
+
 # ------------------------------------------------------- 3) gợi ý bằng Claude
 _SYSTEM = (
     "Bạn là trợ lý thời tiết thân thiện cho người dùng ở Việt Nam. "
@@ -288,7 +382,7 @@ def ai_suggest(analysis: dict, mode: str = "full", habits: str = "",
         client = anthropic.Anthropic()  # tự đọc ANTHROPIC_API_KEY
         resp = client.messages.create(
             model=ANTHROPIC_MODEL,
-            max_tokens=500,
+            max_tokens=400 if mode == "brief" else 1200,  # đủ chỗ để không bị cụt câu
             system=_SYSTEM,
             output_config={"effort": "low"},  # việc đơn giản nên để nhanh, rẻ
             messages=[{"role": "user", "content": prompt}],

@@ -86,14 +86,14 @@ def annotated_events(weather: dict) -> list:
     """Sự kiện sắp tới kèm ghi chú thời tiết tại giờ sự kiện (cho AI và hiển thị)."""
     out = []
     for e in gcal.upcoming_events(hours_ahead=36):
-        note = "" if e["all_day"] else weatherlib.event_wx_note(weather, e["start"])
+        wx = weatherlib.event_weather(e, weather)
         out.append({
             "summary": e["summary"],
             "location": e["location"],
             "when_text": e["when_text"],
             "all_day": e["all_day"],
             "start_iso": e["start_iso"],
-            "wx": note,
+            "wx": weatherlib.wx_note_text(wx),
         })
     return out
 
