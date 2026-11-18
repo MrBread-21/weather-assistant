@@ -62,6 +62,7 @@ async function loadFor(lat, lon) {
     renderWeather(w);
     show("enableBtn");
     loadSuggestion(lat, lon);  // không chặn, chạy song song
+    loadCalEvents(lat, lon);   // nạp sự kiện lịch nếu đã nối
   } catch (e) {
     setStatus("Lỗi lấy thời tiết: " + e.message);
   }
@@ -130,6 +131,78 @@ $("saveHabitsBtn").addEventListener("click", async () => {
   }
 });
 
+// ---- Lịch Google Calendar ----
+let calConnected = false;
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function renderEvents(events) {
+  const ul = $("calEvents");
+  if (!events.length) {
+    ul.innerHTML = "";
+    $("calEmpty").hidden = false;
+    return;
+  }
+  $("calEmpty").hidden = true;
+  ul.innerHTML = events.map((e) => {
+    const when = e.all_day ? "Cả ngày" : e.when_text;
+    const loc = e.location ? " @ " + escapeHtml(e.location) : "";
+    const wx = e.wx ? ` <span class="muted">— ${escapeHtml(e.wx)}</span>` : "";
+    return `<li><b>${escapeHtml(when)}</b> ${escapeHtml(e.summary)}${loc}${wx}</li>`;
+  }).join("");
+}
+
+async function loadCalEvents(lat, lon) {
+  if (!calConnected) return;
+  try {
+    const d = await getJSON(`/api/gcal/events?lat=${lat}&lon=${lon}`);
+    renderEvents(d.events || []);
+  } catch (e) {
+    // bỏ qua, không chặn luồng chính
+  }
+}
+
+async function initCalendar() {
+  // báo kết quả vừa đăng nhập (sau khi Google chuyển hướng về)
+  const q = new URLSearchParams(location.search).get("gcal");
+  if (q === "ok") $("calStatus").textContent = "Đã nối lịch thành công.";
+  else if (q === "fail") $("calStatus").textContent = "Nối lịch thất bại, thử lại nhé.";
+
+  let s;
+  try {
+    s = await getJSON("/api/gcal/status");
+  } catch (e) {
+    return;  // không lấy được trạng thái, ẩn luôn phần lịch
+  }
+  if (!s.configured) return;         // server chưa bật tính năng lịch, ẩn hẳn
+
+  $("calCard").hidden = false;
+  calConnected = s.connected;
+  $("calConnected").hidden = !s.connected;
+  $("calDisconnected").hidden = s.connected;
+  if (s.connected && lastCoords) loadCalEvents(lastCoords.lat, lastCoords.lon);
+}
+
+$("calDisconnectBtn").addEventListener("click", async () => {
+  try {
+    await getJSON("/api/gcal/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    calConnected = false;
+    $("calConnected").hidden = true;
+    $("calDisconnected").hidden = false;
+    $("calStatus").textContent = "Đã ngắt kết nối lịch.";
+  } catch (e) {
+    $("calStatus").textContent = "Lỗi ngắt kết nối: " + e.message;
+  }
+});
+
 $("retryBtn").addEventListener("click", locate);
 locate();
 loadHabits();
+initCalendar();

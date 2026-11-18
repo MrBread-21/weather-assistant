@@ -52,6 +52,20 @@
       <p class="hint" id="habitsStatus"></p>
     </section>
 
+    <section class="card calendar" id="calCard" hidden>
+      <h2>Lịch Google Calendar</h2>
+      <p class="hint" id="calStatus"></p>
+      <div id="calDisconnected" hidden>
+        <p class="muted small">Nối lịch để AI nhắc khi sự kiện của bạn trùng lúc trời mưa.</p>
+        <a class="btn" id="calConnectBtn" href="/api/gcal/login">Đăng nhập Google</a>
+      </div>
+      <div id="calConnected" hidden>
+        <ul id="calEvents"></ul>
+        <p class="muted small" id="calEmpty" hidden>Không có sự kiện nào trong 36 giờ tới.</p>
+        <button class="btn ghost" id="calDisconnectBtn">Ngắt kết nối lịch</button>
+      </div>
+    </section>
+
     <section class="actions">
       <button id="enableBtn" class="btn" hidden>Bật nhắc nhở về điện thoại</button>
       <p class="hint" id="status"></p>

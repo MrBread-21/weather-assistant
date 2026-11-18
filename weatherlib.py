@@ -193,6 +193,38 @@ def summary_text(analysis: dict) -> str:
     return f"{head} Hôm nay nhìn chung khô ráo."
 
 
+def weather_at(weather: dict, dt) -> dict | None:
+    """Thời tiết (xác suất mưa, lượng mưa, mô tả) tại giờ chứa dt (giờ địa phương).
+
+    Trả None nếu giờ đó nằm ngoài tầm dự báo đang có.
+    """
+    h = weather.get("hourly") or {}
+    times = h.get("time") or []
+    prob = h.get("precipitation_probability") or []
+    prec = h.get("precipitation") or []
+    codes = h.get("weather_code") or []
+    key = dt.strftime("%Y-%m-%dT%H")  # so khớp theo giờ
+    for i, t in enumerate(times):
+        if t.startswith(key):
+            return {
+                "prob": prob[i] if i < len(prob) else None,
+                "precip": prec[i] if i < len(prec) else None,
+                "desc": describe_code(codes[i]) if i < len(codes) else "",
+            }
+    return None
+
+
+def event_wx_note(weather: dict, dt) -> str:
+    """Câu ngắn mô tả thời tiết quanh giờ sự kiện, ví dụ 'mưa ~70%'. Rỗng nếu không rõ."""
+    w = weather_at(weather, dt)
+    if not w:
+        return ""
+    prob = w["prob"] or 0
+    if prob >= 50 or (w["precip"] or 0) >= 0.3:
+        return f"{w['desc']}, khả năng mưa ~{prob}%"
+    return f"{w['desc']}"
+
+
 # ------------------------------------------------------- 3) gợi ý bằng Claude
 _SYSTEM = (
     "Bạn là trợ lý thời tiết thân thiện cho người dùng ở Việt Nam. "
@@ -200,16 +232,20 @@ _SYSTEM = (
     "nên mặc hoặc mang gì, nên hay không nên ra ngoài, và 1-2 ý 'nên đi đâu, làm gì' "
     "hợp với thời tiết này. Nếu có thói quen sinh hoạt của người dùng, hãy cá nhân hoá: "
     "đối chiếu giờ họ hay ra ngoài hoặc hoạt động với lúc trời mưa và nhắc cụ thể. "
+    "Nếu có lịch sắp tới, nêu rõ sự kiện nào bị thời tiết ảnh hưởng (mưa, nắng gắt) "
+    "và nên chuẩn bị gì cho sự kiện đó. "
     "Viết tiếng Việt, giọng gần gũi, không lan man, không bịa số liệu ngoài dữ liệu đã cho."
 )
 
 
-def ai_suggest(analysis: dict, mode: str = "full", habits: str = "") -> str | None:
+def ai_suggest(analysis: dict, mode: str = "full", habits: str = "",
+               events: list | None = None) -> str | None:
     """Gọi Claude để gợi ý 'nên đi đâu, làm gì'.
 
     mode='brief':  1-2 câu, hợp cho thông báo đẩy.
     mode='full':   vài câu kèm 1-2 gạch đầu dòng, hợp cho trang web.
     habits:        thói quen sinh hoạt của người dùng (chữ tự do) để cá nhân hoá.
+    events:        danh sách sự kiện sắp tới, mỗi cái {when_text, summary, location?, wx?}.
     Trả về chuỗi gợi ý, hoặc None nếu không có key / chưa cài 'anthropic' / lỗi.
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -235,6 +271,14 @@ def ai_suggest(analysis: dict, mode: str = "full", habits: str = "") -> str | No
 
     if habits and habits.strip():
         facts.append("Thói quen sinh hoạt của người dùng: " + habits.strip())
+
+    if events:
+        lines = []
+        for e in events[:8]:
+            loc = f" tại {e['location']}" if e.get("location") else ""
+            wx = f" — thời tiết lúc đó: {e['wx']}" if e.get("wx") else ""
+            lines.append(f"{e.get('when_text', '')} {e.get('summary', '')}{loc}{wx}")
+        facts.append("Lịch sắp tới của người dùng:\n- " + "\n- ".join(lines))
 
     length = ("Trả lời tối đa 2 câu." if mode == "brief"
               else "Trả lời 2-3 câu, có thể kèm 1-2 gạch đầu dòng gợi ý nơi đến hoặc việc làm.")

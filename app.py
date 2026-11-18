@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
+import time
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit, parse_qs
 
+import gcal
 import weatherlib
 
 ROOT = Path(__file__).resolve().parent
@@ -62,6 +65,39 @@ def load_habits() -> str:
         return ""
 
 
+GCAL_STATE_FILE = STATE_DIR / "gcal_state.json"
+
+
+def save_oauth_state(state: str) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    GCAL_STATE_FILE.write_text(
+        json.dumps({"state": state, "exp": time.time() + 600}), encoding="utf-8")
+
+
+def check_oauth_state(state: str) -> bool:
+    try:
+        d = json.loads(GCAL_STATE_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return False
+    return d.get("state") == state and d.get("exp", 0) > time.time()
+
+
+def annotated_events(weather: dict) -> list:
+    """Sự kiện sắp tới kèm ghi chú thời tiết tại giờ sự kiện (cho AI và hiển thị)."""
+    out = []
+    for e in gcal.upcoming_events(hours_ahead=36):
+        note = "" if e["all_day"] else weatherlib.event_wx_note(weather, e["start"])
+        out.append({
+            "summary": e["summary"],
+            "location": e["location"],
+            "when_text": e["when_text"],
+            "all_day": e["all_day"],
+            "start_iso": e["start_iso"],
+            "wx": note,
+        })
+    return out
+
+
 def _valid_coord(lat, lon) -> bool:
     try:
         return -90 <= float(lat) <= 90 and -180 <= float(lon) <= 180
@@ -90,6 +126,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _redirect(self, location: str) -> None:
+        self.send_response(HTTPStatus.FOUND)
+        self.send_header("Location", location)
+        self.end_headers()
 
     # ----- lấy lat/lon từ query, trả (lat, lon) hoặc None nếu sai -----
     def _coords(self):
@@ -131,7 +172,9 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._send_json(HTTPStatus.BAD_GATEWAY,
                                        {"error": f"Không lấy được thời tiết: {e}"})
-            tip = weatherlib.ai_suggest(analysis, mode="full", habits=load_habits())
+            events = annotated_events(weather) if gcal.is_connected() else None
+            tip = weatherlib.ai_suggest(analysis, mode="full",
+                                        habits=load_habits(), events=events)
             return self._send_json(HTTPStatus.OK, {
                 "suggestion": tip,
                 "ai_on": tip is not None,
@@ -139,6 +182,43 @@ class Handler(SimpleHTTPRequestHandler):
 
         if path == "/api/habits":
             return self._send_json(HTTPStatus.OK, {"habits": load_habits()})
+
+        if path == "/api/gcal/status":
+            return self._send_json(HTTPStatus.OK, {
+                "configured": gcal.is_configured(),
+                "connected": gcal.is_connected(),
+            })
+
+        if path == "/api/gcal/login":
+            if not gcal.is_configured():
+                return self._send_json(HTTPStatus.BAD_REQUEST,
+                                       {"error": "Server chưa cấu hình GCAL_*"})
+            st = secrets.token_urlsafe(16)
+            save_oauth_state(st)
+            return self._redirect(gcal.auth_url(st))
+
+        if path == "/api/gcal/callback":
+            q = self._query()
+            code = q.get("code", [None])[0]
+            state = q.get("state", [None])[0]
+            if not code or not state or not check_oauth_state(state):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "OAuth không hợp lệ"})
+            ok = gcal.exchange_code(code)
+            return self._redirect("/?gcal=" + ("ok" if ok else "fail"))
+
+        if path == "/api/gcal/events":
+            coords = self._coords()
+            if not coords:
+                return
+            try:
+                weather = weatherlib.fetch_weather(*coords)
+            except Exception as e:
+                return self._send_json(HTTPStatus.BAD_GATEWAY,
+                                       {"error": f"Không lấy được thời tiết: {e}"})
+            return self._send_json(HTTPStatus.OK, {
+                "connected": gcal.is_connected(),
+                "events": annotated_events(weather) if gcal.is_connected() else [],
+            })
 
         if path in ("/", "/index.html"):
             self.path = "/index.html"
@@ -148,7 +228,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = self._path()
-        if path not in ("/api/location", "/api/habits"):
+        if path not in ("/api/location", "/api/habits", "/api/gcal/disconnect"):
             return self.send_error(HTTPStatus.NOT_FOUND)
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -169,6 +249,10 @@ class Handler(SimpleHTTPRequestHandler):
             except (ValueError, KeyError, TypeError):
                 return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Toạ độ không hợp lệ"})
             save_location(float(lat), float(lon))
+            return self._send_json(HTTPStatus.OK, {"ok": True})
+
+        if path == "/api/gcal/disconnect":
+            gcal.disconnect()
             return self._send_json(HTTPStatus.OK, {"ok": True})
 
         # /api/habits

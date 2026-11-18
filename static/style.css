@@ -67,6 +67,10 @@ header h1 { margin: 0 0 4px; font-size: 1.4rem; }
 #windows { margin: 0; padding-left: 18px; }
 #windows li { margin: 2px 0; }
 
+#calEvents { margin: 0 0 10px; padding-left: 18px; }
+#calEvents li { margin: 5px 0; }
+.calendar a.btn { display: block; text-align: center; text-decoration: none; }
+
 .suggest { background: var(--card2); }
 .suggest p { margin: 0; white-space: pre-wrap; }
 

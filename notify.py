@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import gcal
 import weatherlib
 
 STATE_DIR = Path(os.environ.get("STATE_DIR", Path(__file__).resolve().parent / "state"))
@@ -50,6 +52,14 @@ def main() -> None:
     state = load_json(ALERT_FILE, {})
     habits = load_json(STATE_DIR / "habits.json", {}).get("habits", "")
 
+    # Sự kiện lịch sắp tới (nếu đã nối Google Calendar), kèm ghi chú thời tiết
+    raw_events = gcal.upcoming_events(hours_ahead=36) if gcal.is_connected() else []
+    day_events = [{
+        "when_text": e["when_text"], "summary": e["summary"],
+        "location": e.get("location", ""),
+        "wx": "" if e["all_day"] else weatherlib.event_wx_note(weather, e["start"]),
+    } for e in raw_events]
+
     now = analysis["now"]
     now_dt = weatherlib._parse(now["time"]) if now.get("time") else weatherlib.datetime.now()
     today = now_dt.date().isoformat()
@@ -72,11 +82,41 @@ def main() -> None:
     # ---------------------------------------------- 2) bản tin sáng
     if 6 <= now_dt.hour < 9 and state.get("last_morning_date") != today:
         summary = weatherlib.summary_text(analysis)
-        tip = weatherlib.ai_suggest(analysis, mode="full", habits=habits)
+        tip = weatherlib.ai_suggest(analysis, mode="full", habits=habits,
+                                    events=day_events or None)
         body = summary + (f"\n\n{tip}" if tip else "")
         ok = weatherlib.send_ntfy("Ban tin sang", body, tags="sunny,calendar")
         print(f"[notify] bản tin sáng gửi={'OK' if ok else 'FAIL'}", flush=True)
         state["last_morning_date"] = today
+
+    # ---------------------------------------------- 3) nhắc theo lịch (sắp mưa)
+    now_utc = datetime.now(timezone.utc)
+    notified = state.get("notified_events", {})
+    for e in raw_events:
+        if e["all_day"]:
+            continue
+        hours = (e["start"] - now_utc).total_seconds() / 3600
+        if not (0 <= hours <= 12):          # chỉ nhắc sự kiện trong 12h tới
+            continue
+        wx = weatherlib.weather_at(weather, e["start"])
+        if not wx or ((wx["prob"] or 0) < 50 and (wx["precip"] or 0) < 0.3):
+            continue                        # thời tiết lúc đó không đáng lo
+        sig = e["start_iso"] + "|" + e["summary"]
+        if sig in notified:
+            continue                        # đã nhắc sự kiện này rồi
+        wx_note = f"{wx['desc']}, khả năng mưa ~{wx['prob'] or 0}%"
+        ev = [{"when_text": e["when_text"], "summary": e["summary"],
+               "location": e.get("location", ""), "wx": wx_note}]
+        tip = weatherlib.ai_suggest(analysis, mode="brief", habits=habits, events=ev)
+        msg = tip or (f"Sự kiện \"{e['summary']}\" lúc {e['when_text']} có thể gặp mưa "
+                      f"({wx_note}). Nhớ mang ô hoặc áo mưa.")
+        ok = weatherlib.send_ntfy("Lich sap toi", msg, priority="high",
+                                  tags="calendar,umbrella")
+        print(f"[notify] nhắc sự kiện {sig} gửi={'OK' if ok else 'FAIL'}", flush=True)
+        notified[sig] = today
+    # chỉ giữ lại các lần đã nhắc trong 2 ngày gần nhất cho gọn
+    cutoff = (now_dt.date() - timedelta(days=2)).isoformat()
+    state["notified_events"] = {k: v for k, v in notified.items() if v >= cutoff}
 
     save_alert_state(state)
 
