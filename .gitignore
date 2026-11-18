@@ -8,3 +8,11 @@ weather-assistant.env
 # Python
 __pycache__/
 *.pyc
+
+# Android (file build sinh ra, không commit)
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk

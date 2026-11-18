@@ -1,0 +1,4 @@
+// Cấu hình gốc. Phiên bản Android Gradle Plugin khai báo một lần ở đây.
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+}
