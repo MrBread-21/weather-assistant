@@ -22,6 +22,9 @@ jobs:
 
       - name: Cài Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Chỉ cài gói cần thiết, tránh gói 'tools' cũ đã bị gỡ khỏi kho
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
       - name: Cài Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
