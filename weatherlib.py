@@ -197,17 +197,19 @@ def summary_text(analysis: dict) -> str:
 _SYSTEM = (
     "Bạn là trợ lý thời tiết thân thiện cho người dùng ở Việt Nam. "
     "Dựa trên thời tiết được cung cấp, đưa ra gợi ý NGẮN GỌN, thực tế: "
-    "nên mặc/mang gì, nên hay không nên ra ngoài, và 1-2 ý 'nên đi đâu / làm gì' "
-    "hợp với thời tiết này. Viết tiếng Việt, giọng gần gũi, không lan man, "
-    "không bịa số liệu ngoài dữ liệu đã cho."
+    "nên mặc hoặc mang gì, nên hay không nên ra ngoài, và 1-2 ý 'nên đi đâu, làm gì' "
+    "hợp với thời tiết này. Nếu có thói quen sinh hoạt của người dùng, hãy cá nhân hoá: "
+    "đối chiếu giờ họ hay ra ngoài hoặc hoạt động với lúc trời mưa và nhắc cụ thể. "
+    "Viết tiếng Việt, giọng gần gũi, không lan man, không bịa số liệu ngoài dữ liệu đã cho."
 )
 
 
-def ai_suggest(analysis: dict, mode: str = "full") -> str | None:
+def ai_suggest(analysis: dict, mode: str = "full", habits: str = "") -> str | None:
     """Gọi Claude để gợi ý 'nên đi đâu, làm gì'.
 
     mode='brief':  1-2 câu, hợp cho thông báo đẩy.
     mode='full':   vài câu kèm 1-2 gạch đầu dòng, hợp cho trang web.
+    habits:        thói quen sinh hoạt của người dùng (chữ tự do) để cá nhân hoá.
     Trả về chuỗi gợi ý, hoặc None nếu không có key / chưa cài 'anthropic' / lỗi.
     """
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -231,8 +233,11 @@ def ai_suggest(analysis: dict, mode: str = "full") -> str | None:
     else:
         facts.append("Hôm nay nhìn chung khô ráo.")
 
+    if habits and habits.strip():
+        facts.append("Thói quen sinh hoạt của người dùng: " + habits.strip())
+
     length = ("Trả lời tối đa 2 câu." if mode == "brief"
-              else "Trả lời 2-3 câu, có thể kèm 1-2 gạch đầu dòng gợi ý nơi đến / việc làm.")
+              else "Trả lời 2-3 câu, có thể kèm 1-2 gạch đầu dòng gợi ý nơi đến hoặc việc làm.")
     prompt = "\n".join(facts) + "\n\n" + length
 
     try:

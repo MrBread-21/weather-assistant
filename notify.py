@@ -48,6 +48,7 @@ def main() -> None:
     weather = weatherlib.fetch_weather(loc["lat"], loc["lon"])
     analysis = weatherlib.analyze(weather)
     state = load_json(ALERT_FILE, {})
+    habits = load_json(STATE_DIR / "habits.json", {}).get("habits", "")
 
     now = analysis["now"]
     now_dt = weatherlib._parse(now["time"]) if now.get("time") else weatherlib.datetime.now()
@@ -57,8 +58,8 @@ def main() -> None:
     if analysis["rain_soon"]:
         sig = analysis["signature"]
         if state.get("last_signature") != sig:   # đợt mưa mới thì báo 1 lần
-            tip = weatherlib.ai_suggest(analysis, mode="brief") or \
-                "Mang theo áo mưa/ô và tránh ra ngoài lúc mưa to nhé."
+            tip = weatherlib.ai_suggest(analysis, mode="brief", habits=habits) or \
+                "Mang theo áo mưa hoặc ô và tránh ra ngoài lúc mưa to nhé."
             msg = f"{analysis['soon_text']}\n\n{tip}"
             ok = weatherlib.send_ntfy("Sap mua", msg, priority="high",
                                       tags="umbrella,rain")
@@ -71,7 +72,7 @@ def main() -> None:
     # ---------------------------------------------- 2) bản tin sáng
     if 6 <= now_dt.hour < 9 and state.get("last_morning_date") != today:
         summary = weatherlib.summary_text(analysis)
-        tip = weatherlib.ai_suggest(analysis, mode="full")
+        tip = weatherlib.ai_suggest(analysis, mode="full", habits=habits)
         body = summary + (f"\n\n{tip}" if tip else "")
         ok = weatherlib.send_ntfy("Ban tin sang", body, tags="sunny,calendar")
         print(f"[notify] bản tin sáng gửi={'OK' if ok else 'FAIL'}", flush=True)

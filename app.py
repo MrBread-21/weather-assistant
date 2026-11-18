@@ -43,6 +43,25 @@ def save_location(lat: float, lon: float) -> None:
     os.replace(tmp, LOCATION_FILE)
 
 
+HABITS_FILE = STATE_DIR / "habits.json"
+MAX_HABITS = 2000  # giới hạn độ dài mô tả thói quen
+
+
+def save_habits(text: str) -> None:
+    """Ghi thói quen sinh hoạt (chữ tự do) để AI cá nhân hoá gợi ý và nhắc nhở."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = HABITS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"habits": text}, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, HABITS_FILE)
+
+
+def load_habits() -> str:
+    try:
+        return json.loads(HABITS_FILE.read_text(encoding="utf-8")).get("habits", "")
+    except (FileNotFoundError, ValueError):
+        return ""
+
+
 def _valid_coord(lat, lon) -> bool:
     try:
         return -90 <= float(lat) <= 90 and -180 <= float(lon) <= 180
@@ -112,11 +131,14 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._send_json(HTTPStatus.BAD_GATEWAY,
                                        {"error": f"Không lấy được thời tiết: {e}"})
-            tip = weatherlib.ai_suggest(analysis, mode="full")
+            tip = weatherlib.ai_suggest(analysis, mode="full", habits=load_habits())
             return self._send_json(HTTPStatus.OK, {
                 "suggestion": tip,
                 "ai_on": tip is not None,
             })
+
+        if path == "/api/habits":
+            return self._send_json(HTTPStatus.OK, {"habits": load_habits()})
 
         if path in ("/", "/index.html"):
             self.path = "/index.html"
@@ -125,7 +147,8 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        if self._path() != "/api/location":
+        path = self._path()
+        if path not in ("/api/location", "/api/habits"):
             return self.send_error(HTTPStatus.NOT_FOUND)
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -135,12 +158,24 @@ class Handler(SimpleHTTPRequestHandler):
             return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Thiếu dữ liệu"})
         try:
             payload = json.loads(self.rfile.read(length))
-            lat, lon = payload["lat"], payload["lon"]
-            if not _valid_coord(lat, lon):
-                raise ValueError
-        except (ValueError, KeyError, TypeError):
-            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Toạ độ không hợp lệ"})
-        save_location(float(lat), float(lon))
+        except ValueError:
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Dữ liệu không hợp lệ"})
+
+        if path == "/api/location":
+            try:
+                lat, lon = payload["lat"], payload["lon"]
+                if not _valid_coord(lat, lon):
+                    raise ValueError
+            except (ValueError, KeyError, TypeError):
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Toạ độ không hợp lệ"})
+            save_location(float(lat), float(lon))
+            return self._send_json(HTTPStatus.OK, {"ok": True})
+
+        # /api/habits
+        habits = payload.get("habits", "") if isinstance(payload, dict) else None
+        if not isinstance(habits, str):
+            return self._send_json(HTTPStatus.BAD_REQUEST, {"error": "Dữ liệu không hợp lệ"})
+        save_habits(habits[:MAX_HABITS])
         return self._send_json(HTTPStatus.OK, {"ok": True})
 
 

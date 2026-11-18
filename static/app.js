@@ -103,5 +103,33 @@ $("enableBtn").addEventListener("click", async () => {
   }
 });
 
+// ---- Thói quen sinh hoạt ----
+async function loadHabits() {
+  try {
+    const h = await getJSON("/api/habits");
+    $("habitsText").value = h.habits || "";
+  } catch (e) {
+    // không sao, để trống
+  }
+  $("habitsCard").hidden = false;
+}
+
+$("saveHabitsBtn").addEventListener("click", async () => {
+  const text = $("habitsText").value.trim();
+  $("habitsStatus").textContent = "Đang lưu…";
+  try {
+    await getJSON("/api/habits", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ habits: text }),
+    });
+    $("habitsStatus").textContent = "Đã lưu. Gợi ý sẽ bám theo thói quen của bạn.";
+    if (lastCoords) loadSuggestion(lastCoords.lat, lastCoords.lon);  // làm mới gợi ý
+  } catch (e) {
+    $("habitsStatus").textContent = "Lỗi lưu: " + e.message;
+  }
+});
+
 $("retryBtn").addEventListener("click", locate);
 locate();
+loadHabits();
